@@ -1,17 +1,20 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::time::Instant;
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 use miniz_oxide::deflate::compress_to_vec;
-use rayon::prelude::*;
+use indicatif::{ProgressIterator, ParallelProgressIterator, ProgressBar, ProgressStyle};
+use rayon::iter::{ParallelIterator, IntoParallelRefIterator};
+use rayon::prelude::IntoParallelIterator;
 
 
 fn main() {
     let start = Instant::now();
-    let text = fs::read_to_string("input.txt").unwrap()[..5000].to_string();
+    let text = fs::read_to_string("input.txt").unwrap()[..1000].to_string();
 
     // # here are all the unique characters that occur in this text
     let chars = {
-        let mut chars_set: HashSet<char> = HashSet::from_iter(text.chars());
+        let chars_set: HashSet<char> = HashSet::from_iter(text.chars());
         let mut chars: Vec<char> = Vec::from_iter(chars_set);
         chars.sort();
         chars
@@ -48,7 +51,7 @@ fn main() {
     println!("get_data | Elapsed time: {:.2?}", before.elapsed());
 
     let before = Instant::now();
-    for (x, y) in d.0.iter().zip(d.1.iter()) {
+    for (x, y) in d.0.iter().zip(d.1.iter()).progress() {
         for token_idx in 0..n_ctx as usize {
             let context = &x[..token_idx+1];
             let target = &y[token_idx];
@@ -61,9 +64,14 @@ fn main() {
     println!("X, Y | Elapsed time: {:.2?}", before.elapsed());
 
     let before = Instant::now();
+    let progress_style = ProgressStyle::with_template("[{elapsed_precise}] {bar:40.cyan/blue} {per_sec} {pos:>7}/{len:7} {msg}")
+        .unwrap();
     let ncd_scores = (0..X.len())
-        .into_par_iter()
+        .into_iter()
+        .progress_count(X.len() as u64)
+        .with_style(progress_style)
         .map(|i| (0..X.len())
+            .into_iter()
             .map(|j: usize| ncd(X[i].0, X[i].1, X[j].0, X[j].1))
                 .collect::<Vec<f64>>())
         .collect::<Vec<Vec<f64>>>();
@@ -74,14 +82,9 @@ fn main() {
 }
 
 fn get_data(data: &Vec<u8>, n_ctx: i64) -> (Vec<&[u8]>, Vec<&[u8]>) {
-    // data = train_data if split == 'train' else val_data
-    // ix = np.array(range(0, len(data) - n_ctx))  # TODO: is step a good idea ?
-    // x = np.stack([data[i:i + n_ctx] for i in ix])
-    // y = np.stack([data[i + 1:i + n_ctx + 1] for i in ix])
-
     let ix = Vec::from_iter(0..(data.len() - n_ctx as usize));
-    let x = ix.iter().map(|&i| &data[i..(i+n_ctx as usize)]).collect();
-    let y = ix.iter().map(|&i| &data[(i+1)..(i+n_ctx as usize+1)]).collect();
+    let x = ix.par_iter().map(|&i| &data[i..(i+n_ctx as usize)]).collect();
+    let y = ix.par_iter().map(|&i| &data[(i+1)..(i+n_ctx as usize+1)]).collect();
 
     (x, y)
 }
@@ -100,7 +103,7 @@ fn concat_with_space(x: &[u8], y: &[u8]) -> Vec<u8> {
 }
 
 fn ncd(x: &[u8], x_compressed: i64, x2: &[u8], x2_compressed: i64) -> f64 {
-    let xx2 = compress_to_vec(&*concat_with_space(x, x2), 6).len() as i64;
+    let xx2 = compress_to_vec(&*[x, x2].concat(), 6).len() as i64;
     (xx2 - x_compressed.min(x2_compressed)) as f64 / x_compressed.max(x2_compressed) as f64
 }
 
