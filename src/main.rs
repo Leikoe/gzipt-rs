@@ -67,7 +67,7 @@ fn main() {
     let progress_style = ProgressStyle::with_template("[{elapsed_precise}] {bar:40.cyan/blue} {per_sec} {pos:>7}/{len:7} {msg}")
         .unwrap();
     let ncd_scores = (0..X.len())
-        .into_iter()
+        .into_iter() // TODO: why is it this slow ? parallel is even slower
         .progress_count(X.len() as u64)
         .with_style(progress_style)
         .map(|i| (0..X.len())
