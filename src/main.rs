@@ -9,6 +9,7 @@ use rayon::prelude::IntoParallelIterator;
 use rand::prelude::*;
 use rayon::current_thread_index;
 use once_cell::sync::Lazy;
+use knn::PointCloud;
 
 const N_CTX: usize = 16;
 const BATCH_SIZE: usize = 1;
@@ -58,8 +59,8 @@ fn main() {
     println!("n_train = {n_train}");
 
 
-    let mut X = Vec::new();
-    let mut Y= Vec::new();
+    let mut X = Vec::with_capacity(N_CTX * N_STEPS);
+    let mut Y= Vec::with_capacity(N_CTX * N_STEPS);
 
     let before = Instant::now();
     for i in (0..N_STEPS).progress() {
@@ -89,8 +90,21 @@ fn main() {
         .collect::<Vec<Vec<f64>>>();
     println!("ncd_scores | Elapsed time: {:.2?}", before.elapsed());
 
+    generate(&pc, b"hello", 200, &X);
 
     println!("TOOK: {}", start.elapsed().as_secs_f64());
+}
+
+fn generate(knn: &PointCloud<Vec<f64>>, context: &[u8], max_new_tokens: usize, ncd_scores: &Vec<Vec<f64>>, X: &Vec<(&[u8], u64)>, Y: &Vec<u8>) {
+    for _ in 0..max_new_tokens {
+        let idx_cond = &context[context.len()-N_CTX..];
+        let idx_cond_compressed = compressed_size(&idx_cond);
+
+        // get the predictions
+        let ncd_scores: Vec<f64> = X.iter().map(|(x, sz)| ncd(&idx_cond, idx_cond_compressed, &x, *sz)).collect();
+        let neighboors = knn.get_nearest_k(ncd_scores, 7);
+
+    }
 }
 
 fn get_data(data: &Vec<u8>) -> ([&[u8]; BATCH_SIZE], [&[u8]; BATCH_SIZE]) {
